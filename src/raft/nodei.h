@@ -1,25 +1,29 @@
 #pragma once
 
 #include <optional>
-#include <vector>
+#include <map>
 
-#include "def.h"
+#include <raft/node.h>
+#include <raft/log.h>
+#include <raft/database.h>
+#include <raft/nodeproxy.h>
 
-class CommonState
+class NodeI : public Node
 {
-    // persistent
+public:
+    NodeI(NodeProxyPtr proxy, DatabasePtr db);
 
-    /*
-     * latest term server has seen (initialized to 0
-     * on first boot, increases monotonically)
-     */
-    Term currentTerm_;
+    void onAppendEntry(const AppendEntriesRequest & request) override;
 
-    /*
-     * candidateId that received vote in current
-     * term (or null if none)
-     */
-    std::optional<ServerId> votedFor_;
+    void onRequestVote(const RequestVoteRequest & request) override;
+
+    void onTick() override;
+
+private:
+    void changeType(NodeType type);
+
+    // persistent state
+    NodeState state_;
 
     // volatile
 
@@ -38,28 +42,35 @@ class CommonState
     Index lastApplied_;
 
     /*
-     * log[]
      * log entries; each entry contains command
      * for state machine, and term when entry
      * was received by leader (first index is 1)
      */
 
-};
+    LogManagerPtr log_;
 
-struct LeaderState
-{
+    // leader state
+
     // volatile
+
     /*
      * for each server, index of the next log entry
      * to send to that server (initialized to leader
      * last log index + 1)
      */
-    std::vector<Index> nextIndex_;
+    std::map<NodeId, Index> nextIndex_;
 
     /*
      * for each server, index of highest log entry
      * known to be replicated on server
      * (initialized to 0, increases monotonically)
      */
-    std::vector<Index> matchIndex_;
+    std::map<NodeId, Index> matchIndex_;
+
+    NodeType type_;
+
+    NodeProxyPtr proxy_;
+
+    DatabasePtr db_;
 };
+

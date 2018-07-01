@@ -2,11 +2,16 @@
 
 #include <cstdint>
 #include <string>
+#include <optional>
+#include <memory>
 
 typedef std::uint64_t Term;
-typedef std::uint64_t ServerId;
+typedef std::uint64_t NodeId;
 typedef std::uint64_t Index;
 typedef std::string Value;
+
+template<class T>
+using shared_ptr = std::shared_ptr<T>;
 
 /*
  * Rules for Servers
@@ -50,9 +55,80 @@ typedef std::string Value;
  * of matchIndex[i] ≥ N, and log[N].term
 */
 
-enum Role
+enum NodeType
 {
     Follower = 0,
     Candidate,
     Leader,
+};
+
+
+class LogId
+{
+public:
+    bool operator == (const LogId & other) const
+    {
+        return (index == other.index) && (term == other.term);
+    }
+
+    bool operator != (const LogId & other) const
+    {
+        return !(*this == other);
+    }
+
+    bool operator < (const LogId & other) const
+    {
+        if(term < other.term)
+        {
+            return true;
+        }
+        else if(term == other.term)
+        {
+            if(index < other.index)
+                return true;
+        }
+
+        return false;
+    }
+
+    bool operator <= (const LogId & other) const
+    {
+        return (*this == other) || (*this < other);
+    }
+
+    bool operator > (const LogId & other) const
+    {
+        return !(*this <= other);
+    }
+
+    bool operator >= (const LogId & other) const
+    {
+        return !(*this < other);
+    }
+
+    Index index;
+
+    Term term;
+};
+
+struct LogEntry
+{
+    LogId id;
+
+    Value value;
+};
+
+struct NodeState
+{
+    /*
+     * latest term server has seen (initialized to 0
+     * on first boot, increases monotonically)
+     */
+    Term currentTerm;
+
+    /*
+     * candidateId that received vote in current
+     * term (or null if none)
+     */
+    std::optional<NodeId> votedFor;
 };

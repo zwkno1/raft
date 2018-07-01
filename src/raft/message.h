@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "state.h"
+#include "common.h"
 
 /*
  * AppendEntries RPC
@@ -22,7 +22,7 @@
  * min(leaderCommit, index of last new entry)
 */
 
-class AppendEntriesRequest
+struct AppendEntriesRequest
 {
     /*
      * leader’s term
@@ -32,24 +32,19 @@ class AppendEntriesRequest
     /*
      * so follower can redirect client
      */
-    ServerId leaderId;
+    NodeId leaderId;
 
     /*
-     * index of log entry immediately preceding
-     * new ones
-     */
-    Term prevLogIndex;
-
-    /*
+     * index of log entry immediately preceding new ones
      * term of prevLogIndex entry
      */
-    Term prevLogTerm;
+    LogId prevLogId;
 
     /*
      * log entries to store (empty for heartbeat;
      * may send more than one for efficiency)
      */
-    std::vector<Value> entries;
+    std::vector<LogEntry> entries;
 
     /*
      * leader’s commitIndex
@@ -57,7 +52,7 @@ class AppendEntriesRequest
     Index leaderCommit;
 };
 
-class AppendEntriesReply
+struct AppendEntriesReply
 {
     /*
      * currentTerm, for leader to update itself
@@ -71,32 +66,22 @@ class AppendEntriesReply
     bool success;
 };
 
-
-/* RequestVote RPC
- * Invoked by candidates to gather votes (§5.2).
- *
- * Receiver implementation:
- * 1. Reply false if term < currentTerm (§5.1)
- * 2. If votedFor is null or candidateId, and candidate’s log is at
- * least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
- */
-
-class RequestVoteRequest
+struct RequestVoteRequest
 {
     // candidate’s term
     Term term;
 
     //candidate requesting vote
-    ServerId candidateId;
+    NodeId candidateId;
 
-    // index of candidate’s last log entry (§5.4)
-    Index lastLogIndex;
-
-    // term of candidate’s last log entry (§5.4)
-    Term lastLogTerm;
+    /*
+     * index of candidate’s last log entry (§5.4)
+     * term of candidate’s last log entry (§5.4)
+     */
+    LogId lastLogId;
 };
 
-class RequestVoteReply
+struct RequestVoteReply
 {
     // currentTerm, for candidate to update itself
     Term term;
