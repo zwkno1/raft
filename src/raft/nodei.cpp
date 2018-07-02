@@ -21,6 +21,55 @@ NodeI::NodeI(NodeProxyPtr proxy, DatabasePtr db)
 */
 void NodeI::onAppendEntry(const AppendEntriesRequest & request)
 {
+    AppendEntriesReply reply{ std::max(request.term, state_.currentTerm), false};
+
+    if(request.term > state_.currentTerm)
+    {
+        NodeState state{ request.term , std::nullopt };
+        db_->saveNodeState(state);
+        state_ = state;
+    }
+
+    if(request.term == state_.currentTerm)
+    {
+        auto entry = log_->get(request.prevLogId.index);
+        if(entry)
+        {
+            if(entry->id == request.prevLogId)
+            {
+                bool reachEnd = false;
+                for(auto const & e : request.entries)
+                {
+                    if(reachEnd)
+                    {
+                        log_->put(e);
+                    }
+                    else
+                    {
+                        entry = log_->get(e.id.index);
+                        if(!entry || (entry->id != e.id))
+                        {
+                            if(entry)
+                            {
+                                log_->dropAfter(e.id.index - 1);
+                            }
+                            reachEnd = true;
+                            log_->put(e);
+                        }
+                    }
+                }
+                reply.success = true;
+            }
+            else
+            {
+                log_->dropAfter(request.prevLogId.index - 1);
+            }
+        }
+    }
+
+    commitIndex_ = std::min(request.leaderCommit, log_->lastId().index);
+
+    proxy_->replyAppendEntry(request.leaderId, reply);
 }
 
 /*
