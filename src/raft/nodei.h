@@ -5,72 +5,44 @@
 
 #include <raft/node.h>
 #include <raft/log.h>
-#include <raft/database.h>
+#include <raft/persistentstate.h>
 #include <raft/nodeproxy.h>
+#include <raft/volatilestate.h>
 
 class NodeI : public Node
 {
 public:
-    NodeI(NodeProxyPtr proxy, DatabasePtr db);
+    NodeI(NodeProxyPtr proxy, PersistentStatePtr persistentState);
 
-    void onAppendEntry(const AppendEntriesRequest & request) override;
+    NodeId id() const override;
 
-    void onRequestVote(const RequestVoteRequest & request) override;
+    NodeType type() const override;
 
-    void onTick() override;
+    void appendEntries(Term term, NodeId leaderId, Index prevLogIndex, Term prevLogTerm, Index leaderCommit, std::vector<LogEntry> & entries) override;
 
+    virtual void requestVote(Term term, NodeId candidateId, Index lastLogIndex, Term lastLogTerm) override;
+
+    // replies
+    void appendEntriesReply(Term term, bool success) override;
+
+    void requestVoteReply(Term term, bool voteGranted) override;
 private:
     void changeType(NodeType type);
 
-    // persistent state
-    NodeState state_;
+    void setLeaderId(NodeId leaderId);
 
-    // volatile
+    void updateCurrentTerm(Term term);
 
-    /*
-     * index of highest log entry known to be
-     * committed (initialized to 0, increases
-     * monotonically)
-     */
-    Index commitIndex_;
+    void voteFor(NodeId id);
 
-    /*
-     * index of highest log entry applied to state
-     * machine (initialized to 0, increases
-     * monotonically)
-     */
-    Index lastApplied_;
-
-    /*
-     * log entries; each entry contains command
-     * for state machine, and term when entry
-     * was received by leader (first index is 1)
-     */
-
-    LogManagerPtr log_;
-
-    // leader state
-
-    // volatile
-
-    /*
-     * for each server, index of the next log entry
-     * to send to that server (initialized to leader
-     * last log index + 1)
-     */
-    std::map<NodeId, Index> nextIndex_;
-
-    /*
-     * for each server, index of highest log entry
-     * known to be replicated on server
-     * (initialized to 0, increases monotonically)
-     */
-    std::map<NodeId, Index> matchIndex_;
+    VolatileState state_;
 
     NodeType type_;
 
+    NodeId leaderId_;
+
     NodeProxyPtr proxy_;
 
-    DatabasePtr db_;
+    PersistentStatePtr persistentState_;
 };
 

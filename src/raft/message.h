@@ -71,7 +71,7 @@ struct RequestVoteRequest
     // candidate’s term
     Term term;
 
-    //candidate requesting vote
+    // candidate requesting vote
     NodeId candidateId;
 
     /*

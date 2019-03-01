@@ -1,11 +1,10 @@
 #include <raft/nodei.h>
 
-NodeI::NodeI(NodeProxyPtr proxy, DatabasePtr db)
+NodeI::NodeI(NodeProxyPtr proxy, PersistentStatePtr persistentState)
     : type_(Follower)
     , proxy_(proxy)
-    , db_(db)
+    , persistentState_(persistentState)
 {
-    state_ = db->loadNodeState();
 }
 
 /*
@@ -19,57 +18,40 @@ NodeI::NodeI(NodeProxyPtr proxy, DatabasePtr db)
  * 5. If leaderCommit > commitIndex, set commitIndex =
  * min(leaderCommit, index of last new entry)
 */
-void NodeI::onAppendEntry(const AppendEntriesRequest & request)
-{
-    AppendEntriesReply reply{ std::max(request.term, state_.currentTerm), false};
 
-    if(request.term > state_.currentTerm)
+void NodeI::appendEntries(Term term, NodeId leaderId, Index prevLogIndex, Term prevLogTerm, Index leaderCommit, std::vector<LogEntry> & entries)
+{
+    // 1.
+    if(term < persistentState_->currentTerm())
     {
-        NodeState state{ request.term , std::nullopt };
-        db_->saveNodeState(state);
-        state_ = state;
+        proxy_->appendEntriesReply(leaderId, persistentState_->currentTerm(), false);
+        return;
     }
 
-    if(request.term == state_.currentTerm)
+    if(term == persistentState_->currentTerm())
     {
-        auto entry = log_->get(request.prevLogId.index);
-        if(entry)
+        if(type_ == Leader)
         {
-            if(entry->id == request.prevLogId)
-            {
-                bool reachEnd = false;
-                for(auto const & e : request.entries)
-                {
-                    if(reachEnd)
-                    {
-                        log_->put(e);
-                    }
-                    else
-                    {
-                        entry = log_->get(e.id.index);
-                        if(!entry || (entry->id != e.id))
-                        {
-                            if(entry)
-                            {
-                                log_->dropAfter(e.id.index - 1);
-                            }
-                            reachEnd = true;
-                            log_->put(e);
-                        }
-                    }
-                }
-                reply.success = true;
-            }
-            else
-            {
-                log_->dropAfter(request.prevLogId.index - 1);
-            }
+            // err: two leaders at same term
+        }
+
+        if(type_ == Candidate)
+        {
+            changeType(Follower);
+            setLeaderId(leaderId_);
         }
     }
+    else
+    {
+        updateCurrentTerm(term);
+        setLeaderId(leaderId_);
+    }
 
-    commitIndex_ = std::min(request.leaderCommit, log_->lastId().index);
+    persistentState_->truncateLog(prevLogTerm, prevLogIndex);
+    persistentState_->appendEntries(entries);
+    persistentState_->setCommitIndex(leaderCommit);
 
-    proxy_->replyAppendEntry(request.leaderId, reply);
+    proxy_->appendEntriesReply(leaderId, term, true);
 }
 
 /*
@@ -79,55 +61,69 @@ void NodeI::onAppendEntry(const AppendEntriesRequest & request)
  */
 void NodeI::onRequestVote(const RequestVoteRequest & request)
 {
-    RequestVoteReply reply{ std::max(request.term, state_.currentTerm), false};
+    // 1.
+    if(request.term < state_.currentTerm)
+    {
+        proxy_->replyRequestVote(request.candidateId, RequestVoteReply{state_.currentTerm, false});
+        return;
+    }
 
     if(request.term > state_.currentTerm)
     {
         // update currentTerm
-        NodeState state{ request.term , std::nullopt };
-        if(request.lastLogId >= log_->lastId())
-        {
-            reply.voteGranted = true;
-            state.votedFor = request.candidateId;
-        }
-
-        // save state
-        db_->saveNodeState(state);
-        state_ = state;
-        changeType(Follower);
+        updateCurrentTerm(request.term);
     }
-    else if(request.term == state_.currentTerm)
+
+    // already votedFor ohter candidate
+    if(state_.votedFor && (state_.votedFor.value() != request.candidateId))
     {
-        if((!state_.votedFor) || (state_.votedFor.value() == request.candidateId))
-        {
-            if(request.lastLogId >= log_->lastId())
-            {
-                reply.voteGranted = true;
-                NodeState state{ request.term, request.candidateId };
-                // save state
-                db_->saveNodeState(state);
-                state_ = state;
-            }
-        }
+        proxy_->replyRequestVote(request.candidateId, RequestVoteReply{state_.currentTerm, false});
+        return;
     }
 
-    proxy_->replyRequestVote(request.candidateId, reply);
+    // candidate's log is not at  least as up-to-date as this log
+    if(request.lastLogId < log_->lastId())
+    {
+        proxy_->replyRequestVote(request.candidateId, RequestVoteReply{state_.currentTerm, false});
+        return;
+    }
+
+    // 2.
+    voteFor(request.candidateId);
+
+    proxy_->replyRequestVote(request.candidateId, RequestVoteReply{state_.currentTerm, true});
 }
 
-void NodeI::onTick()
+void NodeI::onAppendEntriesReply(const AppendEntriesReply &reply)
 {
-    switch (type_)
+    if(reply.term > state_.currentTerm)
     {
-    case Follower:
-        break;
-    case Candidate:
-        break;
-    case Leader:
-        break;
-    default:
-        break;
+        updateCurrentTerm(reply.term);
+        return;
     }
 
+    if(!reply.success)
+        return;
+
+
+
+
+
+}
+
+void NodeI::onRequestVoteReply(const RequestVoteReply &reply)
+{
+    if(reply.term == state_.currentTerm)
+    {
+    }
+    else if(reply.term < state_.currentTerm)
+    {
+        return;
+    }
+    else if(reply.term > state_.currentTerm)
+    {
+        updateCurrentTerm(reply.term);
+    }
 }
 
 void NodeI::changeType(NodeType type)
