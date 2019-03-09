@@ -11,12 +11,17 @@ public:
 
     virtual NodeType type() const = 0;
 
-    virtual void appendEntries(Term term, NodeId leaderId, Index prevLogIndex, Term prevLogTerm, Index leaderCommit, std::vector<LogEntry> & entries) = 0;
+    virtual AppendEntriesReply onAppendEntries(AppendEntriesRequest & request) = 0;
 
-    virtual void requestVote(Term term, NodeId candidateId, Index lastLogIndex, Term lastLogTerm) = 0;
+    virtual RequestVoteReply onRequestVote(RequestVoteRequest & request) = 0;
 
-    // replies
-    virtual void appendEntriesReply(Term term, bool success) = 0;
+    virtual void onAppendEntriesReply(NodeId nodeId, Index beginIndex, Index endIndex, AppendEntriesReply & reply) = 0;
 
-    virtual void requestVoteReply(Term term, bool voteGranted) = 0;
+    virtual void onRequestVoteReply(NodeId nodeId, RequestVoteReply & reply) = 0;
+
+    virtual void onTick(TimePoint now) = 0;
 };
+
+Node::~Node()
+{
+}

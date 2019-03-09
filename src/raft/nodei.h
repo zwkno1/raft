@@ -1,48 +1,61 @@
 #pragma once
 
 #include <optional>
-#include <map>
 
 #include <raft/node.h>
-#include <raft/log.h>
 #include <raft/persistentstate.h>
-#include <raft/nodeproxy.h>
 #include <raft/volatilestate.h>
+#include <raft/ballot.h>
+#include <raft/nodeconfig.h>
+#include <raft/nodeproxy.h>
+#include <chrono>
+
+// implement of Node
 
 class NodeI : public Node
 {
 public:
-    NodeI(NodeProxyPtr proxy, PersistentStatePtr persistentState);
+    NodeI(PersistentStatePtr persistentState, NodeProxyPtr nodeProxy);
 
     NodeId id() const override;
 
     NodeType type() const override;
 
-    void appendEntries(Term term, NodeId leaderId, Index prevLogIndex, Term prevLogTerm, Index leaderCommit, std::vector<LogEntry> & entries) override;
+    AppendEntriesReply onAppendEntries(AppendEntriesRequest & request) override;
 
-    virtual void requestVote(Term term, NodeId candidateId, Index lastLogIndex, Term lastLogTerm) override;
+    RequestVoteReply onRequestVote(RequestVoteRequest & request) override;
 
-    // replies
-    void appendEntriesReply(Term term, bool success) override;
+    void onAppendEntriesReply(NodeId nodeId, Index beginIndex, Index endIndex, AppendEntriesReply & reply) override;
 
-    void requestVoteReply(Term term, bool voteGranted) override;
+    void onRequestVoteReply(NodeId nodeId, RequestVoteReply & reply) override;
+
+    void onTick(TimePoint now) override;
+
 private:
+    void setLeaderId(NodeId leaderId)
+    {
+        leaderId_ = leaderId;
+    }
+
     void changeType(NodeType type);
 
-    void setLeaderId(NodeId leaderId);
+    PersistentStatePtr persistentState_;
 
-    void updateCurrentTerm(Term term);
+    VolatileState volatileState_;
 
-    void voteFor(NodeId id);
-
-    VolatileState state_;
+    NodeProxyPtr nodeProxy_;
 
     NodeType type_;
 
     NodeId leaderId_;
 
-    NodeProxyPtr proxy_;
+    Ballot ballot_;
 
-    PersistentStatePtr persistentState_;
+    NodeConfig config_;
+
+    std::mt19937 random_;
+
+    std::uniform_int_distribution<uint32_t> distribution_;
+
 };
 

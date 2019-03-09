@@ -1,7 +1,29 @@
 #pragma once
 
-#include <raft/log.h>
-#include <map>
+#include <unordered_map>
+
+#include <raft/def.h>
+
+struct FollowerState
+{
+    /*
+     * for each server, index of the next log entry
+     * to send to that server (initialized to leader
+     * last log index + 1)
+     */
+    Index nextIndex;
+
+    /*
+     * for each server, index of highest log entry
+     * known to be replicated on server
+     * (initialized to 0, increases monotonically)
+     */
+    Index matchIndex;
+
+    // last appendEntries return time of this follower
+    TimePoint activeTime;
+
+};
 
 struct VolatileState
 {
@@ -23,19 +45,13 @@ struct VolatileState
 
     // Volatile state on leaders:
     // (Reinitialized after election)
+    std::unordered_map<NodeId, FollowerState> followerState;
 
-    /*
-     * for each server, index of the next log entry
-     * to send to that server (initialized to leader
-     * last log index + 1)
-     */
-    std::map<NodeId, Index> nextIndex;
+    // Volatile state on followers:
+    // last appendEntries time
+    TimePoint activeTime;
 
-    /*
-     * for each server, index of highest log entry
-     * known to be replicated on server
-     * (initialized to 0, increases monotonically)
-     */
-    std::map<NodeId, Index> matchIndex;
+    // election timeout (ms)
+    Duration electionTimeout;
 };
 

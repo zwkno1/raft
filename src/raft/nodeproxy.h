@@ -1,20 +1,19 @@
 #pragma once
 
-#include "common.h"
+#include <raft/message.h>
 
 class NodeProxy
 {
 public:
-    virtual void appendEntries(NodeId id, Term term, NodeId leaderId, Index prevLogIndex, Term prevLogTerm, Index leaderCommit, std::vector<LogEntry> & entries) = 0;
+    virtual ~NodeProxy();
 
-    virtual void requestVote(NodeId id, Term term, NodeId candidateId, Index lastLogIndex, Term lastLogTerm) = 0;
+    virtual void appendEntries(NodeId id, AppendEntriesRequest & request) = 0;
 
-    // replies
-    virtual void appendEntriesReply(NodeId id, Term term, bool success) = 0;
-
-    virtual void requestVoteReply(NodeId id, Term term, bool voteGranted) = 0;
-
-    virtual ~NodeProxy() = 0;
+    virtual void requestVote(NodeId id, RequestVoteRequest & request) = 0;
 };
+
+NodeProxy::~NodeProxy()
+{
+}
 
 typedef std::shared_ptr<NodeProxy> NodeProxyPtr;
